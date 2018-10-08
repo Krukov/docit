@@ -1,93 +1,190 @@
-from docit.spec import Application
+from collections import OrderedDict
+from docit.app import Application
+from marshmallow import Schema, fields, validate
+
+from docit.schema import SchemaAdapter
 
 
-# def test_app_swagger():
-#     api = Application(version='0.1', name='test')
-#
-#     class RequestSchema:
-#         pass
-#
-#     class RespSchema:
-#         pass
-#
-#     class NotFoudndResp:
-#         status = 404
-#         schema = {}
-#
-#
-#     @api.request(RequestSchema)
-#     @api.response(200, RespSchema)
-#     @api.response(NotFoudndResp)
-#     def handler():
-#         return
-#
-#     api.add_path('/path', handler)
-#
-#     assert '/path' in api._paths.values()
-#     assert 'tests.test.handler' in api._paths.keys()
-#     assert 'tests.test.handler' in api._handlers
-
-    # assert hash(RequestSchema) in data['schemas']
-    # assert hash(RespSchema) in data['schemas']
-    # assert hash(NotFoudndResp) in data['schemas']
-
-
-from docit.export import Map, key
-
-
-def test_key():
-    target = {
-        'title': 'test',
-        'suname': 'sutest',
-        'set': True,
-        'value': 1,
-        'dict': {
-            'test1': 'test_1',
+expect = {
+    "swagger": "3.0",
+    "info": {
+        "description": "Des",
+        "version": "0.1.0",
+        "title": "Project",
+        "license": {
+            "name": "Apache 2.0",
+            "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
+        }
+    },
+    # "basePath": "/v2",
+    "paths": {
+        "/v2/user/{username}": {
+            "get": {
+                "description": "get user info",
+                "produces": [
+                    "application/json"
+                ],
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "description": "Status",
+                        "required": True,
+                        "schema":  {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "available",
+                                    "pending",
+                                    "sold"
+                                ],
+                                # "default": "available"
+                            },
+                        },
+                    },
+                    {
+                        "name": "username",
+                        "in": "path",
+                        "description": "User",
+                        "required": True,
+                        "schema": {
+                            "type": "string",
+                        },
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "successful operation",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/User"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "not found",
+                        "schema": None,
+                    }
+                },
+            }
         },
-        'array': ['hello', 'my', 'name']
-    }
-
-    class Test(Map):
-        name = key.title
-        value = key.value
-        set = key.set
-        array = key.array[1]
-        dict_1 = key.dict.test1
-        dict_full = key.dict
-
-        name_func = key.title.replace('test', 'new')
-        set_num = key.set.numerator
-        full_name = key.title + ' ' + key.suname
-
-        dict_as = key.as_({
-            'key': key.value,
-            key.set: 't',
-            key.title: key.suname,
-        })
-        list_as = key.as_([
-            key.title, 'weee'
-        ])
-        iter = key.array.iter_({
-            key.array.item_: key.value
-        })
-        iter2 = key.array.iter_(key.array.item_ + )
-
-    expect = {
-        'name': 'test',
-        'value': 1,
-        'name_func': 'new',
-        'full_name': 'test sutest',
-        'set': True,
-        'set_num': 1,
-        'array': 'my',
-        'dict_1': 'test_1',
-        'dict_full': {
-            'test1': 'test_1',
+    },
+}
+definitions = {
+    "User": {
+        "type": "object",
+        "properties": {
+            "id": {
+                "type": "integer",
+                "format": "int64"
+            },
+            "username": {
+                "type": "string"
+            },
+            "userStatus": {
+                "type": "integer",
+                "format": "int32",
+                "description": "User Status"
+            }
         },
+    },
+}
 
-        'dict_as': {'key': 1, True: 't', 'test': 'sutest'},
-        'list_as': ['test', 'weee'],
-        'iter': [{'hello': 1}, {'my': 1}, {'name': 1}],
-        'iter2': ['hello1', 'my2', 'name3'] ,
-    }
-    assert Test().serialize(target) == expect
+
+def test_app_swagger():
+    api = Application(version='0.1.0', name='Project', description='Des')
+
+    class RequestSchema(Schema):
+        status = fields.List(
+            fields.String(
+                validate=validate.OneOf([
+                    "available",
+                    "pending",
+                    "sold",
+                ])
+            ),
+            required=True,
+            description='Status',
+        )
+
+    class RequestSchema2(Schema):
+        username = fields.String(
+            required=True,
+            description='User',
+        )
+
+    class User(Schema):
+        id = fields.Integer()
+        username = fields.String()
+        userStatus = fields.Integer(description="User Status")
+
+    class MyShemaAdapter(SchemaAdapter):
+        @property
+        def many(self):
+            return self.schema.many
+
+        def get_fields(self) -> list:
+            return list(self.schema._declared_fields.keys())
+
+        def get_field_description(self, field_name: str) -> str:
+            return self.schema._declared_fields[field_name].metadata.get('description')
+
+        def _get_field_type(self, field):
+            if isinstance(field, fields.List):
+                return [self._get_field_type(field.container), ]
+            if isinstance(field.validate, validate.OneOf):
+                return tuple(field.validate.choices)
+            if isinstance(field, fields.String):
+                return str
+            return field
+
+        def get_field_type(self, field_name: str):
+            field = self.schema._declared_fields[field_name]
+            return self._get_field_type(field)
+
+        def get_field_required(self, field_name: str) -> bool:
+            return self.schema._declared_fields[field_name].required
+
+        def get_field_nullable(self, field_name: str) -> bool:
+            return self.schema._declared_fields[field_name].allow_none
+
+    api.register_schema_adapter(Schema, MyShemaAdapter)
+
+    @api.request(OrderedDict((
+            (api.REQUEST.QUERY, RequestSchema()),
+            (api.REQUEST.PATH, RequestSchema2()),
+    )))
+    @api.response(200, User(many=True), description='successful operation', force_link=True)
+    @api.response(404, description='not found')
+    def handler():
+        return {'data': 100}
+
+    api.add_path('/v2/user/{username}', handler, description='get user info')
+
+    result = api.get_swagger()
+    assert 'info' in result
+    assert 'paths' in result
+    assert expect['info'] == result['info']
+    assert '/v2/user/{username}' in result['paths']
+    assert 'get' in result['paths']['/v2/user/{username}']
+    get = result['paths']['/v2/user/{username}']['get']
+    expect_get = expect['paths']['/v2/user/{username}']['get']
+
+    assert 'description' in get
+    assert 'produces' in get
+    assert 'responses' in get
+    assert 'parameters' in get
+
+    assert get['description'] == expect_get['description']
+    assert get['produces'] == expect_get['produces']
+    assert len(get['parameters']) == len(expect_get['parameters'])
+    assert get['parameters'][1] == expect_get['parameters'][1]
+    assert get['parameters'][0] == expect_get['parameters'][0]
+    assert '200' in get['responses']
+    assert '404' in get['responses']
+
+    assert dict(get['responses']['404']) == expect_get['responses']['404']
+    assert dict(get['responses']['200']) == expect_get['responses']['200']
+
